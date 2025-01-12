@@ -95,6 +95,101 @@ def FermiBose(sample, labels, d_f):
             
     return loss/cal_count
 
+########################
+##   强相互作用力损失    ##
+########################
+
+#用循环写这个
+def StrongInter(sample, labels, a, b):
+    """
+    计算给定样本和标签的 Fermi-Bose 损失。
+
+    参数:
+    sample : torch.Tensor
+        样本输入，形状为 (batch_size, hidden1_features)，其中 batch_size 是批大小，hidden1_features 是特征维度。
+    labels : torch.Tensor
+        样本对应的标签，形状为 (batch_size,)。
+    a : float
+        控制损失函数形状的参数，通常用于调整距离的非线性缩放。
+    b : float
+        控制损失函数形状的参数，与 a 配合定义距离的惩罚函数。
+
+    返回:
+    torch.Tensor
+        计算得到的 Fermi-Bose 损失值。
+
+    功能:
+    - 计算样本之间的两两距离。
+    - 对于标签相同的样本对，计算正损失。
+    - 对于标签不同的样本对，计算负损失。
+    - 返回标签相同和不同的样本对的平均损失之和。
+
+    算法:
+    - 损失函数基于以下公式:
+      v(r) = a/r + b*r - sqrt(a*b)
+      其中 r 是样本之间的欧几里得距离。
+    - 标签相同的样本对会贡献 v(r)；
+    - 标签不同的样本对会贡献 -v(r)。
+    """
+    batch, hidden1_features = sample.shape
+    loss_same = 0
+    loss_diff = 0
+    distance = nn.PairwiseDistance(p=2,keepdim=True)
+
+    same_label_count = 1
+    diff_label_count = 1
+    v = lambda x: a/(x + 1e-5)+b*x - math.sqrt(a*b)
+
+    for i in range(batch):
+        for j in range(i+1, batch):
+            r = torch.norm(sample[i]-sample[j])
+            if labels[i] == labels[j]:
+                loss_same += v(r)
+                same_label_count  += 1
+            else:
+                loss_diff += -v(r)
+                diff_label_count  += 1
+            #print("loss_loss", loss_same, loss_diff)
+    print("loss", same_label_count, diff_label_count)
+    print("loss", loss_same/same_label_count, loss_diff/diff_label_count)
+    return loss_same/same_label_count + loss_diff/diff_label_count
+
+
+def fast_StrongInter(sample, labels, a, b):
+    batch, hidden1_features = sample.shape
+    # 使用广播计算每对样本之间的 L2 距离的平方和
+    sample_diff = sample.unsqueeze(1) - sample.unsqueeze(0)  # 扩展维度并相减，得到 (batch, batch, outdim)
+    D_matrix = torch.norm(sample_diff, dim=2)# 对最后一个维度求和，得到 (batch, batch) 矩阵
+
+    #mask = ~torch.eye(batch, dtype=bool, device=sample.device)  # 非对角线部分为 True
+
+    # 计算phi(.)
+    v = lambda x: a / (x+ 1e-5) + b * x - math.sqrt(a * b)
+    phi_matrix = v(D_matrix) 
+
+    # 计算标签矩阵的乘积，结果是 (batch_size, batch_size)，并且只保留上三角，去除重复以及自身关联项
+    label_matrix = torch.triu(labels @ labels.T, diagonal=1).detach()
+
+    # 计算bose_loss
+    same_label_count = max(torch.sum(label_matrix), 1)
+    bose_loss = torch.triu(label_matrix*phi_matrix, diagonal=1).sum()/same_label_count
+
+    # 计算fermi_loss
+    diff_label_count = max(batch*(batch-1)/2 - same_label_count, 1)
+    fermi_loss = torch.triu((label_matrix-1)*phi_matrix, diagonal=1).sum()/diff_label_count
+
+    # 总loss
+    loss = bose_loss + fermi_loss
+    #print("parallel", same_label_count, diff_label_count)
+    #print("parallel", bose_loss, fermi_loss)
+    return loss
+
+
+
+
+
+
+
 def test_accuracy(model, test_loader, device):
     # 准确率计数
     correct = 0

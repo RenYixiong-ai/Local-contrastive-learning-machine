@@ -1,0 +1,10 @@
+/home/yixiong_ren/work/FBM/result/analyse_SIL
+Using device: cuda
+Traceback (most recent call last):
+  File "/home/yixiong_ren/work/FBM/example/analyse_SIL/./MNIST.py", line 215, in <module>
+    more_data(a, b)
+  File "/home/yixiong_ren/work/FBM/example/analyse_SIL/./MNIST.py", line 178, in more_data
+    local_save_path = os.path.join(local_path, f"selected_classes{find_combination_index(selected_classes)}/hidden{hidden_dim}_a{a:.2f}_b{b:.2f}/")
+  File "/home/yixiong_ren/work/FBM/example/analyse_SIL/./MNIST.py", line 96, in find_combination_index
+    raise ValueError("数组中的元素必须在 1 到 10 之间。")
+ValueError: 数组中的元素必须在 1 到 10 之间。

@@ -1,6 +1,7 @@
 import torch.nn as nn
 import torch
 import torch.nn.functional as F
+from . import KAN
 from torchvision.models import resnet34, resnet50, resnet18,vgg16,vgg19
 
 # 定义单层神经网络模型
@@ -17,6 +18,29 @@ class FBMLayer(nn.Module):
         out = (torch.tanh(out) + 1)/2.0    # 用于FermiBose的激活函数
         return out
 
+# 定义单层KAN神经网络模型
+class FBM_KANLayer(nn.Module):
+    def __init__(self, input_size, num_classes, resnet=False):
+        super(FBM_KANLayer, self).__init__()
+        self.resnet = resnet
+        if resnet:
+            self.backbone = resnet18(pretrained=True)
+            self.backbone.fc = nn.Identity()  # remove the last fully connected layer
+            self.input_size = 512
+        else:
+            self.input_size = input_size
+        self.linear = KAN.KANLinear(input_size, num_classes)
+        #self.linear = nn.Linear(self.input_size, num_classes)
+
+    def forward(self, x):
+        if self.resnet:
+            x = self.backbone(x)
+        else:
+            x = x.view(-1, self.input_size)  # 展平图像
+        out = self.linear(x)
+        #out = F.softmax(out, dim=-1)                # ！！！用于SILoss的激活函数，有问题
+        out = (torch.tanh(out) + 1)/2.0    # 用于FermiBose的激活函数
+        return out
 
 # 定义全连接层神经网络模型
 class MLP(nn.Module):

@@ -406,6 +406,248 @@ def fast_FBDistance(features, labels):
 
     return labels_matrix  # 返回类别间的平均距离矩阵
 
+####################################################
+##################### 绘制二维图像 ###################
+####################################################
+
+# 可视化函数：将数据降维到 2D 并可视化
+def visualize_2d(test_loader, model=None, device=None):
+    """
+    使用 t-SNE 将高维数据降维到 2D 并可视化。
+    参数:
+        test_loader: 数据加载器 (DataLoader)，加载测试数据。
+        model: 用于处理数据的模型（可选）。若提供，则将数据传递给模型进行预处理。
+        device: 设备类型，如“cuda”或“cpu”，指定模型运行的设备（可选）。
+    """
+    if model is None:
+        deal_test_loader = test_loader
+    else:
+        deal_test_loader = deal_dataloader(test_loader, model, device, batch_size = 64)
+
+    features, labels = next(iter(deal_test_loader))
+    dims = torch.prod(torch.tensor(features.shape[1:]))
+
+    # 获取 DataLoader 中的全部数据
+    deal_test_features = []
+    deal_test_labels = []
+
+    for batch_data, batch_labels in deal_test_loader:
+        deal_test_features.append(batch_data.view(-1, dims))
+        deal_test_labels.append(batch_labels)
+
+    # 合并所有批次
+    deal_test_features = torch.cat(deal_test_features, dim=0)
+    deal_test_labels = torch.cat(deal_test_labels, dim=0)
+
+    features_np = deal_test_features.numpy()  # 展平
+    labels_np = deal_test_labels.numpy()
+
+    # 使用 t-SNE 降维到 2D
+    _, dims =features.shape
+    
+    if dims > 2:
+        #tsne = TSNE(n_components=2, random_state=42, perplexity=40)
+        pca = PCA(n_components=2)
+        features_2d = pca.fit_transform(features_np)
+        explained_variance_ratio = pca.explained_variance_ratio_
+    else:
+        features_2d = features_np
+        explained_variance_ratio = None
+
+    # 绘制 2D 散点图
+    plt.figure(figsize=(8, 6))
+    for label in np.unique(labels):
+        mask = labels_np == label
+        plt.scatter(
+            features_2d[mask, 0],
+            features_2d[mask, 1],
+            label=f"Class {label}",
+            alpha=0.6
+        )
+    plt.xlabel("Dimension 1")
+    plt.ylabel("Dimension 2")
+    plt.title("Visualization of High-Dimensional Data")
+    plt.legend()
+    plt.grid(True)
+
+    # 显示 PCA 信息占比
+    if explained_variance_ratio is not None:
+        info_text = f"Explained Variance:\nDim 1: {explained_variance_ratio[0]:.2%}\nDim 2: {explained_variance_ratio[1]:.2%}"
+        plt.text(0.05, 0.95, info_text, transform=plt.gca().transAxes, fontsize=10,
+                 verticalalignment='top', bbox=dict(boxstyle='round', alpha=0.2))
+
+    plt.show()
+
+
+####################################################
+#################### 计算正确率代码 ##################
+####################################################
+
+'''
+    该函数用于计算通过聚类算法（KMeans）得到的预测标签与实际标签之间的分类准确率。主要通过混淆矩阵和匈牙利算法（Hungarian algorithm）优化聚类结果的标签匹配。
+'''
+def KMeans_accuracy(test_loader, model=None, device=None):
+    """
+    计算基于KMeans聚类的分类准确性。
+
+    参数:
+        test_loader: 数据加载器 (DataLoader)，加载测试数据。
+        model: 用于处理数据的模型（可选）。若提供，则将数据传递给模型进行预处理。
+        device: 设备类型，如“cuda”或“cpu”，指定模型运行的设备（可选）。
+
+    输出:
+        accuracy: 聚类的准确率（百分比形式）。
+    """
+    if model is None:
+        deal_test_loader = test_loader
+    else:
+        deal_test_loader = deal_dataloader(test_loader, model, device, batch_size = 64)
+
+    features, labels = next(iter(deal_test_loader))
+    dims = torch.prod(torch.tensor(features.shape[1:]))
+
+    # 获取 DataLoader 中的全部数据
+    deal_test_features = []
+    deal_test_labels = []
+
+    for batch_data, batch_labels in deal_test_loader:
+        deal_test_features.append(batch_data.view(-1, dims))
+        deal_test_labels.append(batch_labels)
+
+    # 合并所有批次
+    deal_test_features = torch.cat(deal_test_features, dim=0)
+    deal_test_labels = torch.cat(deal_test_labels, dim=0)
+
+    data = deal_test_features.numpy()  # 展平
+    labels = deal_test_labels.numpy()
+
+    # 2. 应用KMeans聚类
+    n_clusters = len(np.unique(labels))
+    kmeans = KMeans(n_clusters=n_clusters, random_state=42)
+    cluster_assignments = kmeans.fit_predict(data)
+
+    # 3. 创建混淆矩阵
+    confusion_matrix = np.zeros((n_clusters, n_clusters), dtype=np.int32)
+    for cluster in range(n_clusters):
+        cluster_labels = labels[cluster_assignments == cluster]
+        for label in range(n_clusters):
+            confusion_matrix[cluster, label] = np.sum(cluster_labels == label)
+
+    #print("混淆矩阵：")
+    #print(confusion_matrix)
+
+    # 4. 使用匈牙利算法找到最佳标签分配
+    # 我们需要最大化正确分类，因此将混淆矩阵取负作为成本矩阵
+    cost_matrix = -confusion_matrix
+    row_ind, col_ind = linear_sum_assignment(cost_matrix)
+
+    # 创建标签映射
+    cluster_to_label = {}
+    for cluster, label in zip(row_ind, col_ind):
+        cluster_to_label[cluster] = label
+
+    '''    
+    print("\n聚类到标签的映射：")
+    for cluster in cluster_to_label:
+        print(f"聚类 {cluster} -> 标签 {cluster_to_label[cluster]}")
+    '''
+    # 5. 使用映射分配标签并计算准确率
+    predicted_labels = np.array([cluster_to_label[cluster] for cluster in cluster_assignments])
+    accuracy = accuracy_score(labels, predicted_labels)
+    #print(f"\n分类准确率: {accuracy * 100:.2f}%")
+    return accuracy
+
+
+def MLP_accuracy(train_loader, test_loader, model=None, device=None, get_model=False):
+    """
+    训练和评估一个多层感知器 (MLP) 模型，计算并返回模型在测试集上的准确率。
+
+    参数:
+        train_loader (DataLoader): 训练数据加载器。
+        test_loader (DataLoader): 测试数据加载器。
+        model (optional): 预处理模型。如果提供，则会处理数据。
+        device (optional): 设备类型（如 "cuda" 或 "cpu"），用于指定计算设备。
+
+    输出:
+        accuracy (float): 在测试集上的分类准确率。
+    """
+
+    class MLP(nn.Module):
+        def __init__(self, input_size, num_classes):
+            super(MLP, self).__init__()
+            self.input_size = input_size
+            self.linear = nn.Linear(input_size, num_classes)
+
+        def forward(self, x):
+            x = x.view(-1, self.input_size)  # 展平图像
+            out = self.linear(x)
+            #out = F.softmax(out)
+            return out
+
+    if model is not None:
+        train_loader = deal_dataloader(train_loader, model, device, batch_size = 64)
+        test_loader = deal_dataloader(test_loader, model, device, batch_size = 64)
+    learning_rate = 0.01
+    num_classes = 10
+    # 定义损失函数和优化器
+    features, labels = next(iter(test_loader))
+    images_size = torch.prod(torch.tensor(features.shape[1:]))
+    model0 = MLP(images_size, 10).to(device)
+    criterion2 = nn.CrossEntropyLoss()  # 使用交叉熵损失
+    optimizer = optim.Adam(model0.parameters(), lr=learning_rate)  # 使用随机梯度下降优化器
+
+    model0.train()
+    # 训练模型
+    epochs = 30
+    for epoch in range(epochs):
+        for images, labels in train_loader:
+            # 将图像展平为一维向量，并将标签进行 one-hot 编码
+            images = images.to(device)
+            labels_one_hot = F.one_hot(labels, num_classes=num_classes).float().to(device)  # 将标签转换为 one-hot 编码
+
+            # 前向传example/cluster/cluster2.py播
+            outputs = model0(images)
+
+            # 计算损失
+            loss = criterion2(outputs, labels_one_hot)
+
+            # 反向传播和优化
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+
+    # 设置模型为评估模式
+    model0.eval()
+
+    # 准确率计数
+    correct = 0
+    total = 0
+
+    # 禁用梯度计算，加速测试过程
+    with torch.no_grad():
+        for images, labels in test_loader:
+            # 将数据加载到 GPU
+            images = images.view(-1, images_size).to(device)
+            labels = labels.to(device)
+
+            # 前向传播
+            outputs = model0(images)
+            
+            # 获取预测结果
+            _, predicted = torch.max(outputs, 1)
+            
+            # 更新计数
+            total += labels.size(0)
+            correct += (predicted == labels).sum().item()
+
+    # 计算准确率
+    accuracy = 1.0 * correct / total
+    if get_model :
+        return accuracy, model0
+    else:
+        return accuracy
+
+
 if __name__ == "__main__":
     set_seed(42)
 

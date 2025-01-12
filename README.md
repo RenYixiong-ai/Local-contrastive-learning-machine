@@ -17,6 +17,8 @@ Official code repository: [https://github.com/PMI-SYSU/FBM](https://github.com/P
    - Includes the construction of FBM and MLP neural networks.  
 * **loss**  
    - Calculates the Fermi-Bose loss.  
+* **exampe**  
+   - Reaserch details.
 
 # Run
 
