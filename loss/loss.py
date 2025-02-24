@@ -48,7 +48,7 @@ def fast_FermiBose(sample, labels, d_f, alpha=1.0, beta=10.0):
 
     # 计算phi(.)
     diff_label_matrix = F.relu(d_f-D_matrix)     
-    same_label_matrix = F.relu(D_matrix-d_f/beta)     # 用以固定Bose对的距离
+    same_label_matrix = F.relu(D_matrix-d_f/beta)       # 用以固定Bose对的距离
 
 
     # 计算bose_loss
@@ -59,9 +59,9 @@ def fast_FermiBose(sample, labels, d_f, alpha=1.0, beta=10.0):
 
     # 计算fermi_loss
     fermi_matrix = torch.mul(diff_label_matrix, label_matrix)
-    num_fermi = torch.count_nonzero(fermi_matrix)        # 计算Fermi类别的数量
+    num_fermi = torch.count_nonzero(fermi_matrix)       # 计算Fermi类别的数量
     fermi_loss = torch.triu(fermi_matrix, diagonal=1)
-    fermi_loss = fermi_loss.sum()/num_fermi              # 对统计的数目进行归一化
+    fermi_loss = fermi_loss.sum()/num_fermi             # 对统计的数目进行归一化
 
     # 总loss
     total_loss = bose_loss + alpha*fermi_loss
