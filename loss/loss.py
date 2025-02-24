@@ -41,27 +41,27 @@ def fast_FermiBose(sample, labels, d_f, alpha=1.0, beta=10.0):
     batch, hidden1_features = sample.shape
     # 使用广播计算每对样本之间的 L2 距离的平方和
     sample_diff = sample.unsqueeze(1) - sample.unsqueeze(0)  # 扩展维度并相减，得到 (batch, batch, outdim)
-    D_matrix = torch.sum(sample_diff**2, dim=2)/hidden1_features  # 对最后一个维度求和，得到 (batch, batch) 矩阵
+    D_matrix = torch.sum(sample_diff**2, dim=2)/hidden1_features  # 对最后一个维度求和，得到 (batch, batch) 矩阵. 对每一个数据进行归一化
 
     # 计算标签矩阵的乘积，结果是 (batch_size, batch_size)
     label_matrix = labels @ labels.T
 
-    # 计算类别的数量
-    num_boson = (label_matrix.sum() - batch).detach()/2.0
-    num_fermi = (batch**2 - batch - num_boson).detach()/2.0
-
     # 计算phi(.)
-    phi_matrix = F.relu(d_f-D_matrix)
-    bose_matrix = F.relu(D_matrix-d_f/beta)     # 用以固定Bose对的距离
+    diff_label_matrix = F.relu(d_f-D_matrix)     
+    same_label_matrix = F.relu(D_matrix-d_f/beta)     # 用以固定Bose对的距离
 
 
     # 计算bose_loss
-    bose_loss = torch.triu(torch.mul(D_matrix, label_matrix), diagonal=1)
-    bose_loss = bose_loss.sum()/num_boson + 1e-5
+    bose_matrix = torch.mul(same_label_matrix, label_matrix)
+    num_boson = torch.count_nonzero(bose_matrix)        # 计算Bose类别的数量
+    bose_loss = torch.triu(bose_matrix, diagonal=1)
+    bose_loss = bose_loss.sum()/num_boson               # 对统计的数目进行归一化
 
     # 计算fermi_loss
-    fermi_loss = torch.triu(torch.mul(D_matrix, 1-label_matrix), diagonal=1)
-    fermi_loss = fermi_loss.sum()/num_fermi
+    fermi_matrix = torch.mul(diff_label_matrix, label_matrix)
+    num_fermi = torch.count_nonzero(fermi_matrix)        # 计算Fermi类别的数量
+    fermi_loss = torch.triu(fermi_matrix, diagonal=1)
+    fermi_loss = fermi_loss.sum()/num_fermi              # 对统计的数目进行归一化
 
     # 总loss
     total_loss = bose_loss + alpha*fermi_loss
@@ -69,7 +69,7 @@ def fast_FermiBose(sample, labels, d_f, alpha=1.0, beta=10.0):
     return total_loss
 
 
-#用循环写这个
+#用循环写FermiBose，但是这两个有一些区别
 def FermiBose(sample, labels, d_f):
     batch, hidden1_features = sample.shape
     loss = 0
